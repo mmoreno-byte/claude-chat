@@ -1,16 +1,45 @@
-# React + Vite
+# ✦ Claude Chat
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Chat con IA estilo ChatGPT construido con Python + Flask en el backend y React en el frontend.
 
-Currently, two official plugins are available:
+## ✨ Características
+- Chat con IA usando el modelo Llama 3.3 de Groq (gratuito)
+- Historial de conversaciones múltiples
+- Renderizado de Markdown en las respuestas
+- Diseño oscuro estilo ChatGPT
+- Sugerencias de preguntas en pantalla inicial
+- Botón para limpiar conversación
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ Tecnologías
+- **Backend**: Python, Flask, Groq API
+- **Frontend**: React, Vite, react-markdown
 
-## React Compiler
+## 📦 Instalación local
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Backend
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate  # Windows
+pip install -r requirements.txt
+cp .env.example .env   # añade tu GROQ_API_KEY
+python app.py
+```
 
-## Expanding the ESLint configuration
+### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## 🔑 Variables de entorno
+Crea un archivo `.env` en la carpeta `backend`:
+```
+GROQ_API_KEY=tu_api_key_de_groq
+```
+
+Obtén tu API key gratuita en [console.groq.com](https://console.groq.com)
+
+## 👤 Autora
+mmorenodev — [GitHub](https://github.com/mmoreno-byte) · [Portfolio](https://mmoreno-byte.github.io/mmorenodev/)
