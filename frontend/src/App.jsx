@@ -1,5 +1,7 @@
-import ReactMarkdown from 'react-markdown'
 import { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import './App.css'
 
 const MODEL = 'llama-3.3-70b-versatile'
@@ -10,6 +12,37 @@ const SUGGESTIONS = [
   'Dame ideas para un proyecto Python',
   'Ayúdame a escribir un email profesional'
 ]
+
+const CodeBlock = ({ language, children }) => {
+  const [copied, setCopied] = useState(false)
+
+  const copy = () => {
+    navigator.clipboard.writeText(children)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="code-block">
+      <div className="code-header">
+        <span>{language || 'código'}</span>
+        <button onClick={copy}>{copied ? '✓ Copiado' : 'Copiar'}</button>
+      </div>
+      <SyntaxHighlighter language={language} style={oneDark} PreTag="div">
+        {children}
+      </SyntaxHighlighter>
+    </div>
+  )
+}
+
+const MarkdownComponents = {
+  code({ inline, className, children }) {
+    const language = /language-(\w+)/.exec(className || '')?.[1]
+    return !inline
+      ? <CodeBlock language={language}>{String(children).replace(/\n$/, '')}</CodeBlock>
+      : <code className="inline-code">{children}</code>
+  }
+}
 
 export default function App() {
   const [chats, setChats] = useState([{ id: 1, title: 'Nueva conversación', messages: [] }])
@@ -37,7 +70,7 @@ export default function App() {
         ? {
             ...c,
             title: c.messages.length === 0 ? content.slice(0, 30) + (content.length > 30 ? '...' : '') : c.title,
-            messages: updatedMessages
+            messages: [...updatedMessages, { role: 'assistant', content: '' }]
           }
         : c
     ))
@@ -50,12 +83,34 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: updatedMessages })
       })
-      const data = await res.json()
-      setChats(prev => prev.map(c =>
-        c.id === activeChatId
-          ? { ...c, messages: [...updatedMessages, { role: 'assistant', content: data.response }] }
-          : c
-      ))
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let fullContent = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n').filter(l => l.startsWith('data: '))
+
+        for (const line of lines) {
+          const data = line.replace('data: ', '')
+          if (data === '[DONE]') break
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.content) {
+              fullContent += parsed.content
+              setChats(prev => prev.map(c =>
+                c.id === activeChatId
+                  ? { ...c, messages: [...updatedMessages, { role: 'assistant', content: fullContent }] }
+                  : c
+              ))
+            }
+          } catch {}
+        }
+      }
     } catch {
       setChats(prev => prev.map(c =>
         c.id === activeChatId
@@ -65,6 +120,35 @@ export default function App() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const regenerate = () => {
+    if (loading) return
+    const messages = activeChat.messages
+    if (messages.length < 2) return
+    const withoutLast = messages.slice(0, -1)
+    setChats(prev => prev.map(c =>
+      c.id === activeChatId ? { ...c, messages: withoutLast } : c
+    ))
+    const lastUser = withoutLast[withoutLast.length - 1]
+    if (lastUser?.role === 'user') sendMessage(lastUser.content)
+  }
+
+  const copyMessage = (content) => {
+    navigator.clipboard.writeText(content)
+  }
+
+  const exportChat = () => {
+    const text = activeChat.messages
+      .map(m => `${m.role === 'user' ? 'Tú' : 'Asistente'}: ${m.content}`)
+      .join('\n\n')
+    const blob = new Blob([text], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${activeChat.title}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const newChat = () => {
@@ -126,7 +210,12 @@ export default function App() {
               <span className="chat-subtitle">Asistente de IA · {MODEL}</span>
             </div>
           </div>
-          <button className="clear-btn" onClick={clearChat} title="Limpiar chat">🗑 Limpiar</button>
+          <div className="chat-header-actions">
+            {activeChat?.messages.length > 0 && (
+              <button className="export-btn" onClick={exportChat}>⬇ Exportar</button>
+            )}
+            <button className="clear-btn" onClick={clearChat}>🗑 Limpiar</button>
+          </div>
         </header>
 
         <div className="messages">
@@ -137,9 +226,7 @@ export default function App() {
               <p>Pregúntame lo que quieras. Estoy aquí para ayudar.</p>
               <div className="suggestions">
                 {SUGGESTIONS.map((s, i) => (
-                  <button key={i} className="suggestion-btn" onClick={() => sendMessage(s)}>
-                    {s}
-                  </button>
+                  <button key={i} className="suggestion-btn" onClick={() => sendMessage(s)}>{s}</button>
                 ))}
               </div>
             </div>
@@ -150,17 +237,25 @@ export default function App() {
                 {msg.role === 'user' ? '👤' : '✦'}
               </div>
               <div className="message-content">
-                <span className="message-role">{msg.role === 'user' ? 'Tú' : 'Asistente'}</span>
+                <div className="message-header">
+                  <span className="message-role">{msg.role === 'user' ? 'Tú' : 'Asistente'}</span>
+                  <div className="message-actions">
+                    <button className="msg-action-btn" onClick={() => copyMessage(msg.content)} title="Copiar">⎘</button>
+                    {msg.role === 'assistant' && i === activeChat.messages.length - 1 && (
+                      <button className="msg-action-btn" onClick={regenerate} title="Regenerar">↺</button>
+                    )}
+                  </div>
+                </div>
                 <div className="message-bubble">
-                 {msg.role === 'assistant' 
-                 ? <ReactMarkdown>{msg.content}</ReactMarkdown>
-                 : msg.content
-                }
-              </div>
+                  {msg.role === 'assistant'
+                    ? <ReactMarkdown components={MarkdownComponents}>{msg.content}</ReactMarkdown>
+                    : msg.content
+                  }
+                </div>
               </div>
             </div>
           ))}
-          {loading && (
+          {loading && activeChat?.messages[activeChat.messages.length - 1]?.content === '' && (
             <div className="message assistant">
               <div className="message-avatar">✦</div>
               <div className="message-content">
@@ -183,9 +278,7 @@ export default function App() {
               placeholder="Escribe un mensaje... (Enter para enviar, Shift+Enter para nueva línea)"
               disabled={loading}
             />
-            <button onClick={() => sendMessage()} disabled={loading || !input.trim()}>
-              {loading ? '...' : '↑'}
-            </button>
+            <button onClick={() => sendMessage()} disabled={loading || !input.trim()}>↑</button>
           </div>
           <p className="input-hint">Claude Chat puede cometer errores. Verifica la información importante.</p>
         </div>
